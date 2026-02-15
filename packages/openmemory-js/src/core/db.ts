@@ -1,6 +1,7 @@
 import sqlite3 from "sqlite3";
 import { Pool, PoolClient } from "pg";
 import { env } from "./cfg";
+const VEC_DIM = env.vec_dim || 256;
 import fs from "node:fs";
 import path from "node:path";
 import { VectorStore } from "./vector_store";
@@ -158,11 +159,15 @@ if (is_pg) {
             `create table if not exists ${m}(id uuid primary key,user_id text,segment integer default 0,content text not null,simhash text,primary_sector text not null,tags text,meta text,created_at bigint,updated_at bigint,last_seen_at bigint,salience double precision,decay_lambda double precision,version integer default 1,mean_dim integer,mean_vec bytea,compressed_vec bytea,feedback_score double precision default 0)`,
         );
         await pg.query(
-            `create table if not exists ${v}(id uuid,sector text,user_id text,v vector,dim integer not null,primary key(id,sector))`,
+            `create table if not exists ${v}(id uuid,sector text,user_id text,v vector(${VEC_DIM}),dim integer not null,primary key(id,sector))`,
         );
-        await pg.query(
-            `create index if not exists openmemory_vectors_hnsw_idx on ${v} using hnsw (v vector_cosine_ops)`,
-        );
+        try {
+            await pg.query(
+                `create index if not exists openmemory_vectors_hnsw_idx on ${v} using hnsw (v vector_cosine_ops)`,
+            );
+        } catch (e: any) {
+            console.error(`[DB] HNSW index creation skipped (pgvector version may not support it): ${e.message}`);
+        }
         console.error(`[DB] HNSW index created on ${v} for fast ANN queries`);
         await pg.query(
             `create table if not exists ${w}(src_id text,dst_id text not null,user_id text,weight double precision not null,created_at bigint,updated_at bigint,primary key(src_id,user_id))`,
